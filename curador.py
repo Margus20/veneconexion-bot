@@ -3,13 +3,14 @@ import time
 import random
 import requests
 from datetime import datetime
+from urllib.parse import quote
 
 # ============ CONFIGURACIÓN ============
 TOKEN = os.environ.get('BOT_TOKEN')
 CHAT_ID = -1004298823500
 API_URL = f"https://api.telegram.org/bot{TOKEN}"
 
-# IDs de los hilos (message_thread_id)
+# IDs de los hilos
 HILOS = {
     "general": 1,
     "empleos": 4,
@@ -18,84 +19,98 @@ HILOS = {
     "gastronomia": 9
 }
 
-# Palabras clave para clasificar contenido
-PALABRAS_CLAVE = {
-    "cultura": [
-        "música", "arte", "cultura", "historia", "tradición", "folclore",
-        "gaita", "joropo", "tamunangue", "pintura", "escultura", "literatura",
-        "poesía", "cine", "teatro", "danza", "geografía", "paisaje", "ciudad",
-        "pueblo", "turismo", "monumento", "patrimonio", "leyenda", "mito"
-    ],
-    "deportes": [
-        "béisbol", "fútbol", "deporte", "atleta", "juego", "pelota", "LVBP",
-        "MLB", "equipos", "campeonato", "medalla", "olímpico", "natación",
-        "ciclismo", "boxeo", "voleibol", "baloncesto"
-    ],
-    "gastronomia": [
-        "receta", "comida", "arepa", "hallaca", "cachapa", "cocina", "sabor",
-        "plato", "gastronomía", "culinaria", "ingredientes", "sopa", "asado",
-        "pescado", "dulce", "postre", "bebida", "café", "cacao"
-    ],
-    "empleos": [
-        "trabajo", "empleo", "contratación", "vacante", "emprendimiento",
-        "negocio", "oportunidad", "profesión", "oficio", "empresa", "economía",
-        "comercio", "industria"
-    ]
-}
-
-# Temas para buscar en Wikipedia (organizados por categoría)
+# Temas para buscar en Wikipedia (usando títulos EXACTOS que existen)
 TEMAS = {
     "cultura": [
-        "Cultura de Venezuela", "Música de Venezuela", "Arte de Venezuela",
-        "Historia de Venezuela", "Geografía de Venezuela", "Isla de Margarita",
-        "Salto Ángel", "Los Roques", "Mérida (Venezuela)", "Caracas",
-        "Joropo", "Gaita zuliana", "Tamunangue", "Diablos Danzantes de Yare",
-        "Parque Nacional Canaima", "Parque Nacional Morrocoy",
-        "Parque Nacional Henri Pittier", "Roraima", "Gran Sabana",
-        "Lago de Maracaibo", "Orinoco", "Ángel Falls",
-        "Simón Bolívar", "Francisco de Miranda", "José Antonio Páez",
-        "Literatura venezolana", "Rómulo Gallegos", "Teresa Carreño"
+        "Cultura de Venezuela",
+        "Música de Venezuela",
+        "Arte de Venezuela",
+        "Historia de Venezuela",
+        "Isla de Margarita",
+        "Salto Ángel",
+        "Archipiélago Los Roques",
+        "Mérida (Venezuela)",
+        "Caracas",
+        "Joropo",
+        "Gaita zuliana",
+        "Diablos Danzantes de Yare",
+        "Parque Nacional Canaima",
+        "Parque Nacional Morrocoy",
+        "Roraima",
+        "Gran Sabana",
+        "Lago de Maracaibo",
+        "Río Orinoco",
+        "Simón Bolívar",
+        "Francisco de Miranda",
+        "Literatura venezolana",
+        "Rómulo Gallegos",
+        "Teresa Carreño"
     ],
     "deportes": [
-        "Béisbol en Venezuela", "Fútbol en Venezuela",
-        "Selección de béisbol de Venezuela", "Luis Aparicio",
-        "Miguel Cabrera", "Johan Santana", "Félix Hernández",
-        "Deporte en Venezuela", "Juegos Bolivarianos",
-        "Voleibol en Venezuela", "Baloncesto en Venezuela"
+        "Béisbol en Venezuela",
+        "Fútbol en Venezuela",
+        "Selección de béisbol de Venezuela",
+        "Luis Aparicio",
+        "Miguel Cabrera",
+        "Johan Santana",
+        "Félix Hernández",
+        "Deporte en Venezuela",
+        "Voleibol en Venezuela",
+        "Baloncesto en Venezuela"
     ],
     "gastronomia": [
-        "Gastronomía de Venezuela", "Arepa", "Hallaca", "Cachapa",
-        "Pabellón criollo", "Tequeño", "Queso de mano", "Casabe",
-        "Chicha venezolana", "Pan de jamón", "Cachito",
-        "Dulce de leche", "Papelón con limón", "Mandoca",
-        "Sancocho", "Asado negro", "Pescado frito"
+        "Gastronomía de Venezuela",
+        "Arepa",
+        "Hallaca",
+        "Cachapa",
+        "Pabellón criollo",
+        "Tequeño",
+        "Queso de mano",
+        "Casabe",
+        "Chicha venezolana",
+        "Pan de jamón",
+        "Papelón con limón",
+        "Sancocho",
+        "Asado negro"
     ],
     "empleos": [
-        "Emprendimiento en Venezuela", "Economía de Venezuela",
-        "Pequeña y mediana empresa", "Comercio electrónico",
-        "Turismo en Venezuela", "Agricultura en Venezuela",
+        "Emprendimiento",
+        "Economía de Venezuela",
+        "Pequeña y mediana empresa",
+        "Comercio electrónico",
+        "Turismo en Venezuela",
+        "Agricultura en Venezuela",
         "Industria petrolera en Venezuela"
+    ],
+    "general": [
+        "Venezuela",
+        "Bandera de Venezuela",
+        "Himno Nacional de Venezuela",
+        "Escudo de armas de Venezuela",
+        "Geografía de Venezuela",
+        "Clima de Venezuela",
+        "Demografía de Venezuela"
     ]
 }
 
-# Archivo de memoria
 VISTOS_FILE = 'vistos.txt'
 
 def cargar_vistos():
-    """Carga los temas ya publicados desde el archivo."""
     if os.path.exists(VISTOS_FILE):
         with open(VISTOS_FILE, 'r', encoding='utf-8') as f:
             return set(line.strip() for line in f if line.strip())
     return set()
 
 def guardar_visto(tema):
-    """Guarda un tema como ya publicado."""
     with open(VISTOS_FILE, 'a', encoding='utf-8') as f:
         f.write(tema + '\n')
 
 def buscar_wikipedia(tema):
-    """Busca un artículo en Wikipedia y devuelve título, resumen e imagen."""
-    url = f"https://es.wikipedia.org/api/rest_v1/page/summary/{tema.replace(' ', '_')}"
+    """Busca en Wikipedia con URL correctamente codificada."""
+    # Codificar el título para la URL (maneja tildes y ñ)
+    tema_codificado = quote(tema.replace(' ', '_'), safe='')
+    url = f"https://es.wikipedia.org/api/rest_v1/page/summary/{tema_codificado}"
+    
     try:
         resp = requests.get(url, timeout=10)
         if resp.status_code == 200:
@@ -103,23 +118,18 @@ def buscar_wikipedia(tema):
             titulo = data.get('title', tema)
             resumen = data.get('extract', '')
             imagen = data.get('thumbnail', {}).get('source', '')
-            if len(resumen) > 100:
-                return titulo, resumen[:300], imagen
+            
+            # Aceptar resúmenes más cortos (mínimo 50 caracteres)
+            if len(resumen) > 50:
+                return titulo, resumen[:400], imagen
+            else:
+                print(f"   ⚠️ Resumen muy corto ({len(resumen)} chars)")
     except Exception as e:
-        print(f"Error Wikipedia: {e}")
+        print(f"   ❌ Error Wikipedia: {e}")
+    
     return None, None, None
 
-def clasificar_tema(tema):
-    """Clasifica un tema según palabras clave."""
-    tema_lower = tema.lower()
-    for categoria, palabras in PALABRAS_CLAVE.items():
-        for palabra in palabras:
-            if palabra in tema_lower:
-                return categoria
-    return 'general'
-
 def enviar_mensaje(texto, thread_id, imagen_url=''):
-    """Envía un mensaje (con o sin imagen) a un hilo específico."""
     if imagen_url:
         try:
             headers = {'User-Agent': 'Mozilla/5.0'}
@@ -134,10 +144,12 @@ def enviar_mensaje(texto, thread_id, imagen_url=''):
             r = requests.post(f"{API_URL}/sendPhoto", files=files, data=data, timeout=20)
             if r.status_code == 200:
                 return True
+            else:
+                print(f"   ⚠️ Error al enviar imagen: {r.status_code}")
         except Exception as e:
-            print(f"Error al enviar imagen: {e}")
+            print(f"   ⚠️ Error imagen: {e}")
     
-    # Si no hay imagen o falló, enviar solo texto
+    # Enviar solo texto
     data = {
         'chat_id': CHAT_ID,
         'message_thread_id': thread_id,
@@ -145,49 +157,59 @@ def enviar_mensaje(texto, thread_id, imagen_url=''):
         'parse_mode': 'HTML'
     }
     r = requests.post(f"{API_URL}/sendMessage", data=data, timeout=10)
-    return r.status_code == 200
+    if r.status_code == 200:
+        return True
+    else:
+        print(f"   ❌ Error Telegram: {r.status_code} - {r.text[:100]}")
+        return False
 
 def publicar_en_categoria(categoria):
-    """Busca y publica contenido de una categoría."""
     vistos = cargar_vistos()
     temas = TEMAS.get(categoria, [])
     
-    # Filtrar temas no publicados
+    if not temas:
+        print(f"   ⚠️ No hay temas definidos para {categoria}")
+        return False
+    
     temas_disponibles = [t for t in temas if t not in vistos]
     
     if not temas_disponibles:
-        print(f"🔄 Reiniciando lista de {categoria} (todos publicados)")
-        # Reiniciar solo esta categoría en el archivo
+        print(f"   🔄 Reiniciando lista de {categoria}")
         with open(VISTOS_FILE, 'w', encoding='utf-8') as f:
             f.write('')
-        temas_disponibles = temas
+        temas_disponibles = temas[:]
     
-    tema = random.choice(temas_disponibles)
-    titulo, resumen, imagen = buscar_wikipedia(tema)
-    
-    if titulo and resumen:
-        emojis = {
-            'cultura': '',
-            'deportes': '⚽',
-            'gastronomia': '🍲',
-            'empleos': '💼',
-            'general': ''
-        }
-        emoji = emojis.get(categoria, '📌')
+    # Intentar hasta 3 temas antes de rendirse
+    for intento in range(min(3, len(temas_disponibles))):
+        tema = random.choice(temas_disponibles)
+        print(f"   🔍 Buscando: {tema}")
         
-        texto = f"{emoji} <b>{titulo}</b>\n\n{resumen}\n\n📚 Fuente: Wikipedia"
-        thread_id = HILOS.get(categoria, 1)
+        titulo, resumen, imagen = buscar_wikipedia(tema)
         
-        if enviar_mensaje(texto, thread_id, imagen):
-            guardar_visto(tema)
-            print(f"✅ [{categoria}] Publicado: {titulo}")
-            return True
+        if titulo and resumen:
+            emojis = {
+                'cultura': '',
+                'deportes': '⚽',
+                'gastronomia': '🍲',
+                'empleos': '💼',
+                'general': '🇻'
+            }
+            emoji = emojis.get(categoria, '📌')
+            texto = f"{emoji} <b>{titulo}</b>\n\n{resumen}\n\n📚 Fuente: Wikipedia"
+            thread_id = HILOS.get(categoria, 1)
+            
+            if enviar_mensaje(texto, thread_id, imagen):
+                guardar_visto(tema)
+                print(f"   ✅ Publicado: {titulo}")
+                return True
+            else:
+                print(f"   ❌ Falló al enviar: {titulo}")
+                temas_disponibles.remove(tema)
         else:
-            print(f"❌ [{categoria}] Falló al publicar: {titulo}")
-            return False
-    else:
-        print(f"⚠️ [{categoria}] No se encontró info para: {tema}")
-        return False
+            print(f"   ⚠️ Sin info: {tema}")
+            temas_disponibles.remove(tema)
+    
+    return False
 
 def main():
     print("=" * 50)
@@ -198,13 +220,14 @@ def main():
     categorias = ['cultura', 'deportes', 'gastronomia', 'empleos', 'general']
     
     for categoria in categorias:
+        print(f"\n📂 Categoría: {categoria}")
         try:
             publicar_en_categoria(categoria)
-            time.sleep(3)  # Pausa para no saturar la API
+            time.sleep(2)
         except Exception as e:
-            print(f"❌ Error en {categoria}: {e}")
+            print(f"   ❌ Error en {categoria}: {e}")
     
-    print("=" * 50)
+    print("\n" + "=" * 50)
     print("✅ Ciclo completado")
     print("=" * 50)
 
