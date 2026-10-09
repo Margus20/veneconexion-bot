@@ -3,7 +3,6 @@ import time
 import random
 import requests
 from datetime import datetime
-from urllib.parse import quote
 
 # ============ CONFIGURACIÓN ============
 TOKEN = os.environ.get('BOT_TOKEN')
@@ -19,7 +18,12 @@ HILOS = {
     "gastronomia": 9
 }
 
-# Temas para buscar en Wikipedia (usando títulos EXACTOS que existen)
+# Headers para Wikipedia
+WIKI_HEADERS = {
+    'User-Agent': 'VeneConexionBot/1.0 (marcosvargas@example.com) Python/3.10'
+}
+
+# Temas para buscar en Wikipedia
 TEMAS = {
     "cultura": [
         "Cultura de Venezuela",
@@ -28,35 +32,32 @@ TEMAS = {
         "Historia de Venezuela",
         "Isla de Margarita",
         "Salto Ángel",
-        "Archipiélago Los Roques",
-        "Mérida (Venezuela)",
+        "Los Roques",
+        "Mérida",
         "Caracas",
         "Joropo",
         "Gaita zuliana",
-        "Diablos Danzantes de Yare",
-        "Parque Nacional Canaima",
-        "Parque Nacional Morrocoy",
+        "Diablos Danzantes",
+        "Canaima",
+        "Morrocoy",
         "Roraima",
         "Gran Sabana",
         "Lago de Maracaibo",
-        "Río Orinoco",
+        "Orinoco",
         "Simón Bolívar",
         "Francisco de Miranda",
-        "Literatura venezolana",
         "Rómulo Gallegos",
         "Teresa Carreño"
     ],
     "deportes": [
-        "Béisbol en Venezuela",
-        "Fútbol en Venezuela",
-        "Selección de béisbol de Venezuela",
+        "Béisbol",
+        "Fútbol",
         "Luis Aparicio",
         "Miguel Cabrera",
         "Johan Santana",
         "Félix Hernández",
-        "Deporte en Venezuela",
-        "Voleibol en Venezuela",
-        "Baloncesto en Venezuela"
+        "Voleibol",
+        "Baloncesto"
     ],
     "gastronomia": [
         "Gastronomía de Venezuela",
@@ -67,20 +68,20 @@ TEMAS = {
         "Tequeño",
         "Queso de mano",
         "Casabe",
-        "Chicha venezolana",
+        "Chicha",
         "Pan de jamón",
-        "Papelón con limón",
+        "Papelón",
         "Sancocho",
         "Asado negro"
     ],
     "empleos": [
         "Emprendimiento",
-        "Economía de Venezuela",
+        "Economía",
         "Pequeña y mediana empresa",
         "Comercio electrónico",
-        "Turismo en Venezuela",
-        "Agricultura en Venezuela",
-        "Industria petrolera en Venezuela"
+        "Turismo",
+        "Agricultura",
+        "Petróleo"
     ],
     "general": [
         "Venezuela",
@@ -88,8 +89,8 @@ TEMAS = {
         "Himno Nacional de Venezuela",
         "Escudo de armas de Venezuela",
         "Geografía de Venezuela",
-        "Clima de Venezuela",
-        "Demografía de Venezuela"
+        "Clima",
+        "Demografía"
     ]
 }
 
@@ -106,24 +107,39 @@ def guardar_visto(tema):
         f.write(tema + '\n')
 
 def buscar_wikipedia(tema):
-    """Busca en Wikipedia con URL correctamente codificada."""
-    # Codificar el título para la URL (maneja tildes y ñ)
-    tema_codificado = quote(tema.replace(' ', '_'), safe='')
-    url = f"https://es.wikipedia.org/api/rest_v1/page/summary/{tema_codificado}"
+    """Busca en Wikipedia usando la API de búsqueda."""
+    # Primero buscar el artículo
+    search_url = f"https://es.wikipedia.org/w/api.php"
+    search_params = {
+        'action': 'query',
+        'list': 'search',
+        'srsearch': tema,
+        'srlimit': 1,
+        'format': 'json'
+    }
     
     try:
-        resp = requests.get(url, timeout=10)
+        resp = requests.get(search_url, params=search_params, headers=WIKI_HEADERS, timeout=10)
         if resp.status_code == 200:
             data = resp.json()
-            titulo = data.get('title', tema)
-            resumen = data.get('extract', '')
-            imagen = data.get('thumbnail', {}).get('source', '')
+            results = data.get('query', {}).get('search', [])
             
-            # Aceptar resúmenes más cortos (mínimo 50 caracteres)
-            if len(resumen) > 50:
-                return titulo, resumen[:400], imagen
-            else:
-                print(f"   ⚠️ Resumen muy corto ({len(resumen)} chars)")
+            if results:
+                titulo = results[0]['title']
+                
+                # Ahora obtener el resumen
+                summary_url = f"https://es.wikipedia.org/api/rest_v1/page/summary/{titulo.replace(' ', '_')}"
+                summary_resp = requests.get(summary_url, headers=WIKI_HEADERS, timeout=10)
+                
+                if summary_resp.status_code == 200:
+                    summary_data = summary_resp.json()
+                    resumen = summary_data.get('extract', '')
+                    imagen = summary_data.get('thumbnail', {}).get('source', '')
+                    
+                    if len(resumen) > 50:
+                        return titulo, resumen[:400], imagen
+                    else:
+                        print(f"   ⚠️ Resumen muy corto para {titulo}")
     except Exception as e:
         print(f"   ❌ Error Wikipedia: {e}")
     
@@ -132,8 +148,7 @@ def buscar_wikipedia(tema):
 def enviar_mensaje(texto, thread_id, imagen_url=''):
     if imagen_url:
         try:
-            headers = {'User-Agent': 'Mozilla/5.0'}
-            img = requests.get(imagen_url, headers=headers, timeout=10).content
+            img = requests.get(imagen_url, headers=WIKI_HEADERS, timeout=10).content
             files = {'photo': ('img.jpg', img, 'image/jpeg')}
             data = {
                 'chat_id': CHAT_ID,
@@ -145,11 +160,10 @@ def enviar_mensaje(texto, thread_id, imagen_url=''):
             if r.status_code == 200:
                 return True
             else:
-                print(f"   ⚠️ Error al enviar imagen: {r.status_code}")
+                print(f"   ⚠️ Error imagen: {r.status_code}")
         except Exception as e:
             print(f"   ⚠️ Error imagen: {e}")
     
-    # Enviar solo texto
     data = {
         'chat_id': CHAT_ID,
         'message_thread_id': thread_id,
@@ -160,7 +174,7 @@ def enviar_mensaje(texto, thread_id, imagen_url=''):
     if r.status_code == 200:
         return True
     else:
-        print(f"   ❌ Error Telegram: {r.status_code} - {r.text[:100]}")
+        print(f"   ❌ Error Telegram: {r.status_code}")
         return False
 
 def publicar_en_categoria(categoria):
@@ -168,7 +182,7 @@ def publicar_en_categoria(categoria):
     temas = TEMAS.get(categoria, [])
     
     if not temas:
-        print(f"   ⚠️ No hay temas definidos para {categoria}")
+        print(f"   ⚠️ No hay temas para {categoria}")
         return False
     
     temas_disponibles = [t for t in temas if t not in vistos]
@@ -179,7 +193,6 @@ def publicar_en_categoria(categoria):
             f.write('')
         temas_disponibles = temas[:]
     
-    # Intentar hasta 3 temas antes de rendirse
     for intento in range(min(3, len(temas_disponibles))):
         tema = random.choice(temas_disponibles)
         print(f"   🔍 Buscando: {tema}")
@@ -203,7 +216,7 @@ def publicar_en_categoria(categoria):
                 print(f"   ✅ Publicado: {titulo}")
                 return True
             else:
-                print(f"   ❌ Falló al enviar: {titulo}")
+                print(f"   ❌ Falló envío: {titulo}")
                 temas_disponibles.remove(tema)
         else:
             print(f"   ⚠️ Sin info: {tema}")
